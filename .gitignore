@@ -1,0 +1,3 @@
+# Signing keys stay private - never commit these
+*.keystore
+*.jks
