@@ -55,6 +55,7 @@ public class AdBlockVpnService extends VpnService {
     }
 
     private volatile boolean running = false;
+    private volatile long generation = 0; // bumped on every stop; stale threads exit
     private ParcelFileDescriptor tun;
     private FileOutputStream tunOut;
     private DatagramSocket upstream;
@@ -112,6 +113,13 @@ public class AdBlockVpnService extends VpnService {
                     stopVpn();
                     return;
                 }
+                // Race guard: stopped while we were setting up -> tear down, don't start loops
+                if (!running) {
+                    try { tun.close(); } catch (Exception ignored) {}
+                    tun = null;
+                    if (upstream != null) upstream.close();
+                    return;
+                }
                 tunOut = new FileOutputStream(tun.getFileDescriptor());
 
                 statusText = "Protection ON";
@@ -145,10 +153,11 @@ public class AdBlockVpnService extends VpnService {
     }
 
     private void startTunLoop(InetSocketAddress upstreamAddr) {
+        final long myGen = generation;
         tunThread = new Thread(() -> {
             byte[] buf = new byte[8192];
             try (FileInputStream in = new FileInputStream(tun.getFileDescriptor())) {
-                while (running) {
+                while (running && myGen == generation) {
                     int len;
                     try {
                         len = in.read(buf);
@@ -205,15 +214,20 @@ public class AdBlockVpnService extends VpnService {
     }
 
     private void startUpstreamLoop() {
+        final long myGen = generation;
+        final DatagramSocket mySock = upstream;
         upstreamThread = new Thread(() -> {
             byte[] buf = new byte[8192];
             DatagramPacket rp = new DatagramPacket(buf, buf.length);
             byte[] dnsIp = ipToBytes(DNS_IP);
-            while (running) {
+            while (running && myGen == generation) {
                 try {
-                    upstream.receive(rp);
+                    mySock.receive(rp);
                 } catch (IOException e) {
+                    // Zombie guard: socket closed or superseded -> exit, never spin
+                    if (myGen != generation || !running || mySock.isClosed()) break;
                     sweepPending();
+                    try { Thread.sleep(50); } catch (InterruptedException ie) { break; }
                     continue; // timeout: keep looping
                 }
                 int rlen = rp.getLength();
@@ -286,6 +300,7 @@ public class AdBlockVpnService extends VpnService {
 
     private void stopVpn() {
         running = false;
+        generation++; // any live loop sees the mismatch and exits instead of spinning
         isRunning = false;
         statusText = "Stopped";
         try {

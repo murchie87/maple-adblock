@@ -1,4 +1,4 @@
+/home/hatch/workspace/adblock/app/src/main/java/com/murchie/adblock/AdBlockVpnService.java
 /home/hatch/workspace/adblock/app/src/main/java/com/murchie/adblock/DnsUtil.java
 /home/hatch/workspace/adblock/app/src/main/java/com/murchie/adblock/MainActivity.java
-/home/hatch/workspace/adblock/app/src/main/java/com/murchie/adblock/AdBlockVpnService.java
 /home/hatch/workspace/adblock/manual-build/gen/com/murchie/adblock/R.java
